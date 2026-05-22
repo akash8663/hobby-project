@@ -1,0 +1,12 @@
+{
+  "name": "hotspot-dashboard",
+  "version": "1.0.0",
+  "description": "Mobile-hosted web dashboard accessible over WiFi hotspot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

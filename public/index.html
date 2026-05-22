@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #14141f;
+      --text: #f0f0f5;
+      --text-dim: #8888a0;
+      --accent: #4fc3f7;
+      --accent-warm: #ffb74d;
+      --error: #ef5350;
+    }
+
+    html {
+      font-size: clamp(18px, 4.5vw, 28px);
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      padding-top: max(1.5rem, env(safe-area-inset-top));
+      padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    }
+
+    main {
+      width: 100%;
+      max-width: 32rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .clock-section {
+      text-align: center;
+    }
+
+    .time {
+      font-size: 3.5rem;
+      font-weight: 300;
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .date {
+      font-size: 1.1rem;
+      color: var(--text-dim);
+      margin-top: 0.4rem;
+      font-weight: 400;
+    }
+
+    .weather-card {
+      background: var(--surface);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .weather-main {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .weather-icon {
+      font-size: 3rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .weather-temp {
+      font-size: 2.5rem;
+      font-weight: 300;
+      line-height: 1;
+    }
+
+    .weather-desc {
+      font-size: 1.1rem;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .weather-details {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.95rem;
+      color: var(--text-dim);
+      flex-wrap: wrap;
+    }
+
+    .weather-details span {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .weather-status {
+      font-size: 0.95rem;
+      color: var(--text-dim);
+      text-align: center;
+      min-height: 1.4em;
+    }
+
+    .weather-status.error {
+      color: var(--error);
+    }
+
+    .weather-status.loading {
+      color: var(--accent-warm);
+    }
+
+    button.retry-btn {
+      display: none;
+      margin: 0.5rem auto 0;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-family: inherit;
+      background: var(--surface);
+      color: var(--accent);
+      border: 2px solid var(--accent);
+      border-radius: 0.75rem;
+      cursor: pointer;
+      min-height: 3rem;
+      min-width: 8rem;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button.retry-btn.visible {
+      display: block;
+    }
+
+    button.retry-btn:active {
+      background: var(--accent);
+      color: var(--bg);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="clock-section" aria-label="Current time">
+      <div class="time" id="time">--:--</div>
+      <div class="date" id="date">Loading…</div>
+    </section>
+
+    <section class="weather-card" aria-label="Current weather">
+      <div class="weather-main">
+        <div class="weather-icon" id="weather-icon" aria-hidden="true">⏳</div>
+        <div>
+          <div class="weather-temp" id="weather-temp">--°</div>
+          <div class="weather-desc" id="weather-desc">—</div>
+        </div>
+      </div>
+      <div class="weather-details" id="weather-details"></div>
+    </section>
+
+    <p class="weather-status" id="weather-status">Getting location…</p>
+    <button class="retry-btn" id="retry-btn" type="button">Retry</button>
+  </main>
+
+  <script>
+    const WMO_CODES = {
+      0: { desc: "Clear sky", icon: "☀️" },
+      1: { desc: "Mainly clear", icon: "🌤️" },
+      2: { desc: "Partly cloudy", icon: "⛅" },
+      3: { desc: "Overcast", icon: "☁️" },
+      45: { desc: "Foggy", icon: "🌫️" },
+      48: { desc: "Rime fog", icon: "🌫️" },
+      51: { desc: "Light drizzle", icon: "🌦️" },
+      53: { desc: "Drizzle", icon: "🌦️" },
+      55: { desc: "Heavy drizzle", icon: "🌧️" },
+      56: { desc: "Freezing drizzle", icon: "🌧️" },
+      57: { desc: "Freezing drizzle", icon: "🌧️" },
+      61: { desc: "Light rain", icon: "🌦️" },
+      63: { desc: "Rain", icon: "🌧️" },
+      65: { desc: "Heavy rain", icon: "🌧️" },
+      66: { desc: "Freezing rain", icon: "🌧️" },
+      67: { desc: "Freezing rain", icon: "🌧️" },
+      71: { desc: "Light snow", icon: "🌨️" },
+      73: { desc: "Snow", icon: "❄️" },
+      75: { desc: "Heavy snow", icon: "❄️" },
+      77: { desc: "Snow grains", icon: "❄️" },
+      80: { desc: "Light showers", icon: "🌦️" },
+      81: { desc: "Showers", icon: "🌧️" },
+      82: { desc: "Heavy showers", icon: "⛈️" },
+      85: { desc: "Light snow showers", icon: "🌨️" },
+      86: { desc: "Snow showers", icon: "❄️" },
+      95: { desc: "Thunderstorm", icon: "⛈️" },
+      96: { desc: "Thunderstorm w/ hail", icon: "⛈️" },
+      99: { desc: "Thunderstorm w/ hail", icon: "⛈️" },
+    };
+
+    const timeEl = document.getElementById("time");
+    const dateEl = document.getElementById("date");
+    const weatherIcon = document.getElementById("weather-icon");
+    const weatherTemp = document.getElementById("weather-temp");
+    const weatherDesc = document.getElementById("weather-desc");
+    const weatherDetails = document.getElementById("weather-details");
+    const weatherStatus = document.getElementById("weather-status");
+    const retryBtn = document.getElementById("retry-btn");
+
+    function updateClock() {
+      const now = new Date();
+      timeEl.textContent = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      dateEl.textContent = now.toLocaleDateString([], {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      });
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    function setStatus(msg, type = "") {
+      weatherStatus.textContent = msg;
+      weatherStatus.className = "weather-status" + (type ? " " + type : "");
+    }
+
+    function showRetry(show) {
+      retryBtn.classList.toggle("visible", show);
+    }
+
+    function formatTemp(celsius, unit) {
+      if (unit === "fahrenheit") {
+        return Math.round(celsius * 9 / 5 + 32) + "°F";
+      }
+      return Math.round(celsius) + "°C";
+    }
+
+    async function fetchWeather(lat, lon) {
+      const url = new URL("https://api.open-meteo.com/v1/forecast");
+      url.searchParams.set("latitude", lat);
+      url.searchParams.set("longitude", lon);
+      url.searchParams.set("current", "temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m");
+      url.searchParams.set("temperature_unit", "fahrenheit");
+      url.searchParams.set("wind_speed_unit", "mph");
+      url.searchParams.set("timezone", "auto");
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Weather API unavailable");
+      return res.json();
+    }
+
+    function renderWeather(data) {
+      const current = data.current;
+      const code = current.weather_code;
+      const info = WMO_CODES[code] || { desc: "Unknown", icon: "🌡️" };
+
+      weatherIcon.textContent = info.icon;
+      weatherTemp.textContent = Math.round(current.temperature_2m) + "°F";
+      weatherDesc.textContent = info.desc;
+
+      weatherDetails.innerHTML = "";
+      if (current.wind_speed_10m != null) {
+        weatherDetails.innerHTML += `<span>💨 ${Math.round(current.wind_speed_10m)} mph</span>`;
+      }
+      if (current.relative_humidity_2m != null) {
+        weatherDetails.innerHTML += `<span>💧 ${current.relative_humidity_2m}%</span>`;
+      }
+
+      setStatus("");
+      showRetry(false);
+    }
+
+    function loadWeather() {
+      setStatus("Getting location…", "loading");
+      showRetry(false);
+      weatherIcon.textContent = "⏳";
+      weatherTemp.textContent = "--°";
+      weatherDesc.textContent = "—";
+      weatherDetails.innerHTML = "";
+
+      if (!navigator.geolocation) {
+        setStatus("Geolocation not supported on this browser.", "error");
+        showRetry(true);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            setStatus("Loading weather…", "loading");
+            const data = await fetchWeather(pos.coords.latitude, pos.coords.longitude);
+            renderWeather(data);
+          } catch (err) {
+            setStatus("Could not load weather. Check your connection.", "error");
+            showRetry(true);
+          }
+        },
+        (err) => {
+          const messages = {
+            1: "Location permission denied. Allow location access and retry.",
+            2: "Location unavailable.",
+            3: "Location request timed out.",
+          };
+          setStatus(messages[err.code] || "Could not get location.", "error");
+          showRetry(true);
+        },
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      );
+    }
+
+    retryBtn.addEventListener("click", loadWeather);
+    loadWeather();
+  </script>
+</body>
+</html>
