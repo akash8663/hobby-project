@@ -6,13 +6,18 @@ const PORT = 3000;
 const HOST = "0.0.0.0";
 
 function getLocalIp() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === "IPv4" && !iface.internal) {
-        return iface.address;
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === "IPv4" && !iface.internal) {
+          return iface.address;
+        }
       }
     }
+  } catch (err) {
+    // iSH often throws here — server can still run
+    console.warn("  (Could not auto-detect IP:", err.message + ")");
   }
   return null;
 }
