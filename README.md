@@ -2,22 +2,35 @@
 
 A mobile-hosted web dashboard you can run on your phone and open from any device on the same WiFi hotspot — ideal for a Tesla browser, tablet, or passenger phone while driving.
 
-Shows a live clock and local weather (via browser geolocation + [Open-Meteo](https://open-meteo.com/), no API key required).
+Shows a live clock and local weather via [Open-Meteo](https://open-meteo.com/) (no API key required).
 
 ## Requirements
 
 - [Node.js](https://nodejs.org/) on the host device
 - A Node.js terminal app on mobile:
-  - **iOS:** [iSH](https://ish.app/) (Alpine Linux shell with Node via `apk add nodejs`)
+  - **iOS:** [iSH](https://ish.app/) (`apk add nodejs npm`)
   - **Android:** [Termux](https://termux.dev/) (`pkg install nodejs`)
+- **HTTPS certificates** (`cert.pem` and `key.pem` in the project root) for location on LAN devices
 
 ## Install
-
-Copy this project onto your phone (or clone it), then in the project folder:
 
 ```bash
 npm install
 ```
+
+### HTTPS certificates
+
+Place `key.pem` and `cert.pem` in the project root. Generate them with OpenSSL or `mkcert`, and include your LAN IP in the certificate (Subject Alternative Name), e.g. `192.168.1.183`.
+
+### Weather without GPS (optional)
+
+For Tesla or browsers that block location, copy the example and set your coordinates:
+
+```bash
+cp location.json.example location.json
+```
+
+Edit `latitude` / `longitude` to your area. The server uses this when the browser denies GPS.
 
 ## Run
 
@@ -25,49 +38,50 @@ npm install
 node index.js
 ```
 
-The server binds to `0.0.0.0:3000` so other devices on the hotspot can reach it. On startup you will see output like:
+The server binds to `0.0.0.0:3000` with HTTPS when certs are present:
 
 ```
   Hotspot Dashboard is running
   ─────────────────────────────
-  On this device:  http://127.0.0.1:3000
+  HTTPS enabled (secure context for location)
+  On this device:  https://127.0.0.1:3000
   From other devices on the same WiFi:
-                   http://192.168.x.x:3000
+                   https://192.168.x.x:3000
 ```
 
-Use the **second URL** from other devices (Tesla, tablet, etc.).
+Use **`https://`** URLs (not `http://`).
+
+### First visit — trust the certificate
+
+Self-signed certs show a warning. On each device:
+
+1. Open the `https://` URL
+2. Accept the security warning (**Advanced** → proceed)
+3. Allow **Location** when prompted (optional if `location.json` is set)
+4. Tap **Retry** if weather did not load
 
 ## Access from another device
 
-1. **Enable the hotspot** on your phone (Settings → Personal Hotspot / Mobile Hotspot).
-2. **Connect the other device** to that WiFi network.
-3. **Start the server** on the phone (`node index.js`) and note the IP printed in the terminal.
-4. **Open a browser** on the other device and go to `http://<phone-ip>:3000`.
+1. Enable **Personal Hotspot** on the host phone.
+2. Connect the other device (Tesla, tablet, etc.) to that WiFi.
+3. Run `node index.js` on the host and note the printed IP.
+4. Open `https://<host-ip>:3000` in the browser.
 
-### Finding your phone's IP manually
+## Weather / location behavior
 
-If the printed IP is wrong or missing:
-
-| Platform | How to find IP |
-|----------|----------------|
-| **iPhone** | Settings → Wi-Fi → (i) next to your hotspot / network → IP Address |
-| **Android** | Settings → Network → Hotspot → or `ifconfig` / `ip addr` in Termux |
-| **iSH** | Run `ip addr` or `ifconfig` in the shell |
-
-The IP is usually in the `192.168.x.x` range.
-
-### Tips
-
-- Keep the terminal app open (or use a background process manager) so the server stays running.
-- **Location:** The Tesla or client browser must allow location for weather. The phone hosting the server should have location enabled; clients use their own GPS if available, otherwise the host's location is used when you open the page on the phone itself.
-- **Firewall:** Most phone hotspots do not block device-to-device traffic; if you cannot connect, confirm both devices are on the same hotspot network.
+| Method | When it applies |
+|--------|------------------|
+| Browser GPS | Preferred on `https://` after you allow location |
+| Saved browser location | Used if GPS is denied but worked before on that device |
+| `location.json` on server | Fallback for Tesla / denied GPS — set once on the host |
 
 ## Project structure
 
 ```
-├── index.js          # Express server (0.0.0.0:3000, prints local IP)
-├── public/
-│   └── index.html    # Dashboard UI (clock + weather)
+├── index.js               # HTTPS server + /api/weather
+├── cert.pem, key.pem      # TLS certs (not in git)
+├── location.json.example  # Template for host fallback coords
+├── public/index.html      # Dashboard UI
 ├── package.json
 └── README.md
 ```

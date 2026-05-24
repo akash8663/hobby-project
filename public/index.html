@@ -241,25 +241,67 @@
       retryBtn.classList.toggle("visible", show);
     }
 
-    function formatTemp(celsius, unit) {
-      if (unit === "fahrenheit") {
-        return Math.round(celsius * 9 / 5 + 32) + "°F";
-      }
-      return Math.round(celsius) + "°C";
+    const LOCATION_STORAGE_KEY = "dashboardWeatherLocation";
+
+    function saveLocation(lat, lon) {
+      try {
+        localStorage.setItem(
+          LOCATION_STORAGE_KEY,
+          JSON.stringify({ lat, lon, savedAt: Date.now() })
+        );
+      } catch (_) {}
+    }
+
+    function loadSavedLocation() {
+      try {
+        const raw = localStorage.getItem(LOCATION_STORAGE_KEY);
+        if (!raw) return null;
+        const { lat, lon } = JSON.parse(raw);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+      } catch (_) {}
+      return null;
     }
 
     async function fetchWeather(lat, lon) {
-      const url = new URL("https://api.open-meteo.com/v1/forecast");
-      url.searchParams.set("latitude", lat);
-      url.searchParams.set("longitude", lon);
-      url.searchParams.set("current", "temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m");
-      url.searchParams.set("temperature_unit", "fahrenheit");
-      url.searchParams.set("wind_speed_unit", "mph");
-      url.searchParams.set("timezone", "auto");
-
+      const url = new URL("/api/weather", window.location.origin);
+      if (lat != null && lon != null) {
+        url.searchParams.set("lat", lat);
+        url.searchParams.set("lon", lon);
+      }
       const res = await fetch(url);
-      if (!res.ok) throw new Error("Weather API unavailable");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Weather unavailable");
+      }
       return res.json();
+    }
+
+    async function loadWeatherWithFallback(reason) {
+      const saved = loadSavedLocation();
+      if (saved) {
+        try {
+          setStatus("Loading weather (saved location)…", "loading");
+          const data = await fetchWeather(saved.lat, saved.lon);
+          renderWeather(data);
+          if (reason) setStatus(reason + " Using saved location.", "");
+          return;
+        } catch (_) {}
+      }
+
+      try {
+        setStatus("Loading weather (host location)…", "loading");
+        const data = await fetchWeather();
+        renderWeather(data);
+        if (reason) setStatus(reason + " Using host location from server.", "");
+        return;
+      } catch (err) {
+        setStatus(
+          err.message ||
+            "Could not load weather. Allow location, or add location.json on the server.",
+          "error"
+        );
+        showRetry(true);
+      }
     }
 
     function renderWeather(data) {
@@ -292,30 +334,35 @@
       weatherDetails.innerHTML = "";
 
       if (!navigator.geolocation) {
-        setStatus("Geolocation not supported on this browser.", "error");
-        showRetry(true);
+        loadWeatherWithFallback("GPS not available.");
+        return;
+      }
+
+      if (!window.isSecureContext) {
+        loadWeatherWithFallback("Use https:// (not http://) for GPS.");
         return;
       }
 
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           try {
+            const { latitude: lat, longitude: lon } = pos.coords;
+            saveLocation(lat, lon);
             setStatus("Loading weather…", "loading");
-            const data = await fetchWeather(pos.coords.latitude, pos.coords.longitude);
+            const data = await fetchWeather(lat, lon);
             renderWeather(data);
           } catch (err) {
-            setStatus("Could not load weather. Check your connection.", "error");
+            setStatus(err.message || "Could not load weather.", "error");
             showRetry(true);
           }
         },
         (err) => {
           const messages = {
-            1: "Location permission denied. Allow location access and retry.",
+            1: "Location denied.",
             2: "Location unavailable.",
-            3: "Location request timed out.",
+            3: "Location timed out.",
           };
-          setStatus(messages[err.code] || "Could not get location.", "error");
-          showRetry(true);
+          loadWeatherWithFallback(messages[err.code] || "Could not get location.");
         },
         { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
       );

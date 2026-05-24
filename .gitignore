@@ -619,3 +619,4 @@ node_modules/vary/README.md
 package-lock.json
 cert.pem
 key.pem
+location.json
